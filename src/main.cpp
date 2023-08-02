@@ -4,44 +4,57 @@
 #include "GameSettings.h"
 #include <vector>
 
-void playerMove(std::vector<Card> &playerCards, Card dealerCard, CardStack &cardStack) {
-    int playerValue = calcCardsValues(playerCards);
+void
+playerMove(std::vector<std::vector<Card>> &playerStacks, Card dealerCard, CardStack &cardStack, unsigned &currentBet) {
+    for (auto &stack: playerStacks) {
+        // player can move with every stack he has
+        int playerValue = calcCardsValues(stack);
 
-    while(playerValue < 17) {
-        playerCards.push_back(cardStack.draw());
-        playerValue = calcCardsValues(playerCards);
+        // player strategy
+        while (playerValue < 17) {
+            stack.push_back(cardStack.draw());
+            playerValue = calcCardsValues(stack);
+        }
     }
 }
 
 double doRound(CardStack &cardStack) {
-    std::vector<Card> playerCards;
+    unsigned currentBet = GameSettings::betPerRound;
+    std::vector<std::vector<Card>> playerStacks;
     std::vector<Card> dealerCards;
+    playerStacks.emplace_back();
 
     // player and dealer get two cards
-    playerCards.push_back(cardStack.draw());
+    playerStacks[0].push_back(cardStack.draw());
     dealerCards.push_back(cardStack.draw());
-    playerCards.push_back(cardStack.draw());
+    playerStacks[0].push_back(cardStack.draw());
     dealerCards.push_back(cardStack.draw());
 
     Card dealerVisibleCard = dealerCards[0];
 
-    int playerValue = calcCardsValues(playerCards);
     int dealerValue = calcCardsValues(dealerCards);
 
-    if (playerValue == 21) {
+    if (calcCardsValues(playerStacks[0]) == 21) {
         //Blackjack!
         if (dealerValue == 21) {
             return 0;
         } else {
-            return GameSettings::betPerRound * GameSettings::blackJackPays;
+            return static_cast<double>(currentBet) * GameSettings::blackJackPays;
         }
     }
     // player does stuff
-    playerMove(playerCards, dealerVisibleCard, cardStack);
-    playerValue = calcCardsValues(playerCards);
+    playerMove(playerStacks, dealerVisibleCard, cardStack, currentBet);
 
-    if(playerValue > 21) {
-        return static_cast<double>(GameSettings::betPerRound) * -1;
+
+    double result = 0;
+
+    for (int index = 0; index < playerStacks.size(); index++) {
+        auto stack = playerStacks[index];
+        int playerValue = calcCardsValues(stack);
+        if (playerValue > 21) {
+            result += static_cast<double>(currentBet) * -1;
+            playerStacks.erase(playerStacks.begin() + index);
+        }
     }
 
     // dealer does stuff
@@ -50,18 +63,24 @@ double doRound(CardStack &cardStack) {
         dealerValue = calcCardsValues(dealerCards);
     }
 
-    if (dealerValue > 21) {
-        // dealer busted
-        return GameSettings::betPerRound;
+    for (const auto &stack: playerStacks) {
+        int playerValue = calcCardsValues(stack);
+
+        if (dealerValue > 21) {
+            // dealer busted
+            result += static_cast<double>(currentBet);
+        } else if (playerValue > dealerValue) {
+            // player won by higher card value
+            result += static_cast<double>(currentBet);
+        } else if (playerValue == dealerValue) {
+            // player and dealer have same value
+        } else {
+            // player has less than dealer and lost
+            result += static_cast<double>(currentBet) * -1;
+        }
     }
 
-    if (playerValue > dealerValue) {
-        return GameSettings::betPerRound;
-    } else if(playerValue == dealerValue) {
-        return 0;
-    }
-
-    return static_cast<double>(GameSettings::betPerRound) * -1;
+    return result;
 }
 
 int main() {
